@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>P2P Cyber-Messenger & File Transfer</title>
+    <!-- Подключаем Tailwind CSS для крутого дизайна -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Кастомный ретро-киберпанк стиль */
+        body {
+            background-color: #0d0f12;
+            color: #39ff14;
+            font-family: monospace;
+        }
+        .cyber-border {
+            border: 2px solid #39ff14;
+            box-shadow: 0 0 10px rgba(57, 255, 20, 0.3);
+        }
+        .cyber-btn {
+            background-color: #1a1f26;
+            border: 1px solid #39ff14;
+            transition: all 0.3s ease;
+        }
+        .cyber-btn:hover:not(:disabled) {
+            background-color: #39ff14;
+            color: #0d0f12;
+            box-shadow: 0 0 15px rgba(57, 255, 20, 0.6);
+        }
+        .cyber-btn:disabled {
+            border-color: #224422;
+            color: #224422;
+            cursor: not-allowed;
+        }
+        .message-bubble {
+            background-color: #161b22;
+            border: 1px solid #238636;
+        }
+        .message-bubble.my-msg {
+            background-color: #21262d;
+            border-color: #39ff14;
+        }
+        /* Скроллбар */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0d0f12;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #39ff14;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen p-4 max-w-lg mx-auto">
+
+    <!-- Заголовок и статус -->
+    <header class="text-center my-4">
+        <h1 class="text-2xl font-bold tracking-widest text-[#39ff14] uppercase">📡 P2P BURMALDA-OS CHAT</h1>
+        <p class="text-xs text-gray-500 mt-1">ПРЯМАЯ СВЯЗЬ БЕЗ СЕРВЕРОВ И БЛОКИРОВОК</p>
+        <div id="connection-status" class="inline-block px-3 py-1 mt-2 text-xs rounded-full bg-red-950 text-red-400 border border-red-500">
+            Нет подключения
+        </div>
+    </header>
+
+    <!-- Секция 1: Настройка подключения (Скрывается после соединения) -->
+    <section id="setup-section" class="cyber-border p-4 rounded-lg space-y-4 bg-[#11141a]">
+        <div class="grid grid-cols-2 gap-2">
+            <button id="btn-create" class="cyber-btn py-3 px-4 rounded font-bold">1. СОЗДАТЬ КОМНАТУ</button>
+            <button id="btn-join" class="cyber-btn py-3 px-4 rounded font-bold">1. ПРИСОЕДИНИТЬСЯ</button>
+        </div>
+
+        <!-- Шаг создания комнаты (Для Хоста) -->
+        <div id="host-panel" class="hidden space-y-3">
+            <p class="text-xs text-yellow-500">👉 Скопируй этот код и отправь другу:</p>
+            <textarea id="local-offer" readonly class="w-full h-24 p-2 bg-black border border-gray-700 text-xs rounded text-gray-400 focus:outline-none focus:border-[#39ff14]" onclick="this.select()"></textarea>
+            
+            <div class="flex gap-2">
+                <button id="btn-copy-offer" class="cyber-btn text-xs py-2 px-3 rounded flex-1">Скопировать код</button>
+                <button id="btn-show-qr" class="cyber-btn text-xs py-2 px-3 rounded flex-1">Показать QR-код</button>
+            </div>
+
+            <!-- Контейнер QR кода -->
+            <div id="qr-container" class="hidden p-3 bg-white rounded-lg flex flex-col items-center justify-center">
+                <img id="qr-image" src="" alt="QR Code Connection" class="w-40 h-40">
+                <p class="text-[10px] text-black mt-2 font-sans font-semibold">Друг может отсканировать это камерой</p>
+            </div>
+
+            <div class="border-t border-gray-800 pt-3">
+                <p class="text-xs text-yellow-500">👉 Вставь ответный код друга сюда:</p>
+                <textarea id="remote-answer" class="w-full h-20 p-2 bg-black border border-gray-700 text-xs rounded text-gray-400 focus:outline-none focus:border-[#39ff14]" placeholder="Вставь код ответа здесь..."></textarea>
+                <button id="btn-connect-host" class="cyber-btn w-full mt-2 py-2 text-sm font-bold rounded">2. ПОДКЛЮЧИТЬСЯ К ДРУГУ</button>
+            </div>
+        </div>
+
+        <!-- Шаг подключения к комнате (Для Клиента) -->
+        <div id="client-panel" class="hidden space-y-3">
+            <p class="text-xs text-yellow-500">👉 Вставь код Хоста сюда:</p>
+            <textarea id="remote-offer" class="w-full h-24 p-2 bg-black border border-gray-700 text-xs rounded text-gray-400 focus:outline-none focus:border-[#39ff14]" placeholder="Вставь длинный код от создателя комнаты..."></textarea>
+            <button id="btn-create-answer" class="cyber-btn w-full py-2 text-sm font-bold rounded">2. СОЗДАТЬ ОТВЕТНЫЙ КОД</button>
+
+            <div id="client-answer-block" class="hidden border-t border-gray-800 pt-3 space-y-2">
+                <p class="text-xs text-yellow-500">👉 Скопируй ответ и отправь его Хосту:</p>
+                <textarea id="local-answer" readonly class="w-full h-20 p-2 bg-black border border-gray-700 text-xs rounded text-gray-400 focus:outline-none focus:border-[#39ff14]" onclick="this.select()"></textarea>
+                <button id="btn-copy-answer" class="cyber-btn w-full py-2 text-xs rounded">Скопировать ответный код</button>
+                <p class="text-[10px] text-gray-500 animate-pulse">Ожидание, пока Хост применит твой код и откроет туннель...</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Секция 2: ЧАТ И ПЕРЕДАЧА ФАЙЛОВ (Показывается при успешном коннекте) -->
+    <section id="chat-section" class="hidden flex-1 flex flex-col cyber-border rounded-lg bg-[#11141a] overflow-hidden mt-4">
+        <!-- Окно сообщений -->
+        <div id="chat-box" class="flex-1 p-4 overflow-y-auto space-y-3 text-sm max-h-[50vh]">
+            <div class="text-center text-xs text-gray-600 border-b border-gray-800 pb-2">
+                🚨 КАНАЛ СВЯЗИ ШИФРУЕТСЯ ИДЁТ НАПРЯМУЮ P2P 🚨
+            </div>
+        </div>
+
+        <!-- Индикатор прогресса передачи файлов -->
+        <div id="progress-container" class="hidden px-4 py-2 bg-black border-t border-gray-800">
+            <div class="flex justify-between text-[10px] mb-1">
+                <span id="file-status">Передача файла...</span>
+                <span id="file-percent">0%</span>
+            </div>
+            <div class="w-full bg-gray-800 rounded-full h-1.5">
+                <div id="progress-bar" class="bg-[#39ff14] h-1.5 rounded-full" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <!-- Инструменты отправки файлов -->
+        <div class="px-4 py-2 bg-[#161a22] border-t border-gray-800 flex items-center justify-between gap-2">
+            <label class="cursor-pointer cyber-btn text-xs py-1.5 px-3 rounded text-center flex-1 max-w-[150px] truncate">
+                <span id="file-label">📎 Выбрать файл</span>
+                <input type="file" id="file-input" class="hidden">
+            </label>
+            <button id="btn-send-file" disabled class="cyber-btn text-xs py-1.5 px-3 rounded flex-1 font-bold">
+                🚀 Отправить файл
+            </button>
+        </div>
+
+        <!-- Поле ввода текста -->
+        <div class="p-3 bg-black border-t border-gray-800 flex gap-2">
+            <input type="text" id="msg-input" placeholder="Введите сообщение..." class="flex-1 bg-[#111] border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-[#39ff14] text-white">
+            <button id="btn-send-msg" class="cyber-btn px-4 py-2 rounded font-bold">-></button>
+        </div>
+    </section>
+
+    <!-- Подвал (Пасхалка) -->
+    <footer class="text-center text-[10px] text-gray-600 mt-4">
+        🔒 Безопасная Зона. The fog is coming. Версия 2.0 (P2P + File Share)
+    </footer>
+
+    <!-- Скрипт Логики WebRTC и передачи файлов -->
+    <script>
+        // Инициализация WebRTC
+        const config = {
+            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        };
+        
+        let pc = new RTCPeerConnection(config);
+        let dataChannel = null;
+
+        // Переменные для сборки файлов
+        let receivedChunks = [];
+        let receivedSize = 0;
+        let fileMeta = null;
+
+        // Элементы интерфейса
+        const statusDiv = document.getElementById('connection-status');
+        const setupSection = document.getElementById('setup-section');
+        const chatSection = document.getElementById('chat-section');
+        const chatBox = document.getElementById('chat-box');
+        const msgInput = document.getElementById('msg-input');
+        const btnSendMsg = document.getElementById('btn-send-msg');
+
+        const fileInput = document.getElementById('file-input');
+        const fileLabel = document.getElementById('file-label');
+        const btnSendFile = document.getElementById('btn-send-file');
+        const progressContainer = document.getElementById('progress-container');
+        const progressBar = document.getElementById('progress-bar');
+        const fileStatus = document.getElementById('file-status');
+        const filePercent = document.getElementById('file-percent');
+
+        // Буфер обмена с поддержкой iframe-песочниц
+        function copyToClipboard(elementId) {
+            const textarea = document.getElementById(elementId);
+            textarea.select();
+            try {
+                document.execCommand('copy');
+                showSystemMessage("Код скопирован в буфер обмена!");
+            } catch (err) {
+                showSystemMessage("Не удалось скопировать. Выделите и скопируйте вручную.");
+            }
+        }
+
+        function showSystemMessage(text) {
+            const msg = document.createElement('div');
+            msg.className = 'text-center text-[10px] text-yellow-500 my-1 animate-pulse';
+            msg.innerText = `[СИСТЕМА]: ${text}`;
+            chatBox.appendChild(msg);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        // КНОПКА "СОЗДАТЬ КОМНАТУ" (ХОСТ)
+        document.getElementById('btn-create').addEventListener('click', () => {
+            document.getElementById('host-panel').classList.remove('hidden');
+            document.getElementById('client-panel').classList.add('hidden');
+            
+            // Создаем канал передачи данных
+            dataChannel = pc.createDataChannel("chat-channel", { ordered: true });
+            setupDataChannel(dataChannel);
+
+            // Создаем Offer
+            pc.createOffer().then(offer => {
+                return pc.setLocalDescription(offer);
+            }).then(() => {
+                // Ждём сбора всех ICE-кандидатов для стабильного ручного P2P
+                pc.onicecandidate = (event) => {
+                    if (!event.candidate) {
+                        // Кандидаты собраны, выдаем финальную строку
+                        document.getElementById('local-offer').value = btoa(JSON.stringify(pc.localDescription));
+                    }
+                };
+            });
+        });
+
+        // КНОПКА "ПРИСОЕДИНИТЬСЯ" (КЛИЕНТ)
+        document.getElementById('btn-join').addEventListener('click', () => {
+            document.getElementById('client-panel').classList.remove('hidden');
+            document.getElementById('host-panel').classList.add('hidden');
+
+            pc.ondatachannel = (event) => {
+                dataChannel = event.channel;
+                setupDataChannel(dataChannel);
+            };
+        });
+
+        // ГЕНЕРАЦИЯ QR-КОДА БЕЗ ЗАВИСИМОСТЕЙ (ЧЕРЕЗ ИНТЕРНЕТ ИЗОБРАЖЕНИЕ)
+        document.getElementById('btn-show-qr').addEventListener('click', () => {
+            const codeText = document.getElementById('local-offer').value;
+            if (!codeText) return;
+            
+            const qrImg = document.getElementById('qr-image');
+            // Используем защищенное открытое API для генерации QR в виде обычной картинки
+            qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(codeText)}`;
+            
+            const qrContainer = document.getElementById('qr-container');
+            qrContainer.classList.toggle('hidden');
+        });
+
+        // КОПИРОВАНИЕ КЛЮЧЕЙ
+        document.getElementById('btn-copy-offer').addEventListener('click', () => copyToClipboard('local-offer'));
+        document.getElementById('btn-copy-answer').addEventListener('click', () => copyToClipboard('local-answer'));
+
+        // СОЗДАНИЕ ОТВЕТА (КЛИЕНТ)
+        document.getElementById('btn-create-answer').addEventListener('click', () => {
+            const rawOffer = document.getElementById('remote-offer').value.trim();
+            if (!rawOffer) return;
+
+            try {
+                const offerDesc = new RTCSessionDescription(JSON.parse(atob(rawOffer)));
+                pc.setRemoteDescription(offerDesc).then(() => {
+                    return pc.createAnswer();
+                }).then(answer => {
+                    return pc.setLocalDescription(answer);
+                }).then(() => {
+                    pc.onicecandidate = (event) => {
+                        if (!event.candidate) {
+                            document.getElementById('local-answer').value = btoa(JSON.stringify(pc.localDescription));
+                            document.getElementById('client-answer-block').classList.remove('hidden');
+                        }
+                    };
+                });
+            } catch (e) {
+                showSystemMessage("Ошибка парсинга кода! Проверь, правильно ли скопирован.");
+            }
+        });
+
+        // КНОПКА КЛИЕНТСКОГО ПОДКЛЮЧЕНИЯ (ХОСТ)
+        document.getElementById('btn-connect-host').addEventListener('click', () => {
+            const rawAnswer = document.getElementById('remote-answer').value.trim();
+            if (!rawAnswer) return;
+
+            try {
+                const answerDesc = new RTCSessionDescription(JSON.parse(atob(rawAnswer)));
+                pc.setRemoteDescription(answerDesc);
+            } catch (e) {
+                showSystemMessage("Ошибка парсинга кода ответа!");
+            }
+        });
+
+        // НАСТРОЙКА КАНАЛА ДАННЫХ (Одинаковая для Хоста и Клиента)
+        function setupDataChannel(channel) {
+            channel.binaryType = "arraybuffer"; // Ключевое свойство для передачи файлов!
+
+            channel.onopen = () => {
+                statusDiv.innerText = "Подключено напрямую";
+                statusDiv.className = "inline-block px-3 py-1 mt-2 text-xs rounded-full bg-green-950 text-green-400 border border-green-500 animate-pulse";
+                setupSection.classList.add('hidden');
+                chatSection.classList.remove('hidden');
+                showSystemMessage("Канал обмена данными открыт! Можете общаться и обмениваться файлами.");
+            };
+
+            channel.onclose = () => {
+                statusDiv.innerText = "Подключение разорвано";
+                statusDiv.className = "inline-block px-3 py-1 mt-2 text-xs rounded-full bg-red-950 text-red-400 border border-red-500";
+                setupSection.classList.remove('hidden');
+                chatSection.classList.add('hidden');
+            };
+
+            channel.onmessage = (event) => {
+                // 1. ПРОВЕРКА: Если пришли бинарные данные (кусочек файла)
+                if (event.data instanceof ArrayBuffer) {
+                    receivedChunks.push(event.data);
+                    receivedSize += event.data.byteLength;
+
+                    if (fileMeta) {
+                        const percent = Math.floor((receivedSize / fileMeta.size) * 100);
+                        progressContainer.classList.remove('hidden');
+                        fileStatus.innerText = `Получение: ${fileMeta.name}`;
+                        filePercent.innerText = `${percent}%`;
+                        progressBar.style.width = `${percent}%`;
+
+                        // Если загрузка файла полностью завершена
+                        if (receivedSize >= fileMeta.size) {
+                            const blob = new Blob(receivedChunks);
+                            const url = URL.createObjectURL(blob);
+
+                            // Вывод сообщения в чат с красивой кнопкой скачивания
+                            appendFileMessage(fileMeta.name, url, fileMeta.size, false);
+
+                            // Сброс буферов
+                            receivedChunks = [];
+                            receivedSize = 0;
+                            fileMeta = null;
+                            progressContainer.classList.add('hidden');
+                        }
+                    }
+                } else {
+                    // 2. Если пришёл обычный текст
+                    try {
+                        const signal = JSON.parse(event.data);
+                        // Проверяем служебный сигнал о начале передачи файла
+                        if (signal.type === 'file-start') {
+                            fileMeta = { name: signal.name, size: signal.size };
+                            receivedChunks = [];
+                            receivedSize = 0;
+                            return; // Выходим из обработчика сообщений
+                        }
+                    } catch (err) {
+                        // Игнорируем ошибку парсинга, значит это обычный текст
+                    }
+
+                    // Вывод обычного сообщения в чат
+                    appendMessage(event.data, false);
+                }
+            };
+        }
+
+        // ВЫВОД СООБЩЕНИЙ В ЧАТ
+        function appendMessage(text, isMyMessage) {
+            const bubbleWrap = document.createElement('div');
+            bubbleWrap.className = `flex ${isMyMessage ? 'justify-end' : 'justify-start'}`;
+
+            const bubble = document.createElement('div');
+            bubble.className = `max-w-[80%] rounded-lg p-3 text-xs ${isMyMessage ? 'message-bubble my-msg text-[#39ff14]' : 'message-bubble text-white'}`;
+            bubble.innerText = text;
+
+            bubbleWrap.appendChild(bubble);
+            chatBox.appendChild(bubbleWrap);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        // ВЫВОД КНОПКИ СКАЧИВАНИЯ ФАЙЛА В ЧАТЕ
+        function appendFileMessage(fileName, fileUrl, fileSize, isMyFile) {
+            const bubbleWrap = document.createElement('div');
+            bubbleWrap.className = `flex ${isMyFile ? 'justify-end' : 'justify-start'}`;
+
+            const bubble = document.createElement('div');
+            bubble.className = `max-w-[80%] rounded-lg p-3 text-xs space-y-2 ${isMyFile ? 'message-bubble my-msg text-[#39ff14]' : 'message-bubble text-white'}`;
+            
+            const sizeInMb = (fileSize / (1024 * 1024)).toFixed(2);
+            
+            bubble.innerHTML = `
+                <div class="font-bold">📂 ${isMyFile ? 'Отправлен файл' : 'Получен файл'}:</div>
+                <div class="text-[11px] text-gray-400 truncate">${fileName}</div>
+                <div class="text-[10px] text-gray-500">Размер: ${sizeInMb} МБ</div>
+                <a href="${fileUrl}" download="${fileName}" class="block text-center bg-green-900 border border-green-400 hover:bg-green-700 text-white font-bold py-1 px-3 rounded text-[11px] transition duration-200">
+                    📥 Скачать
+                </a>
+            `;
+
+            bubbleWrap.appendChild(bubble);
+            chatBox.appendChild(bubbleWrap);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        // ОТПРАВКА ТЕКСТОВОГО СООБЩЕНИЯ
+        function sendTextMessage() {
+            const text = msgInput.value.trim();
+            if (!text || !dataChannel || dataChannel.readyState !== 'open') return;
+
+            dataChannel.send(text);
+            appendMessage(text, true);
+            msgInput.value = '';
+        }
+
+        btnSendMsg.addEventListener('click', sendTextMessage);
+        msgInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') sendTextMessage();
+        });
+
+        // ЛОГИКА ОТПРАВКИ ФАЙЛА
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length > 0) {
+                const file = fileInput.files[0];
+                fileLabel.innerText = file.name;
+                btnSendFile.disabled = false;
+            } else {
+                fileLabel.innerText = "📎 Выбрать файл";
+                btnSendFile.disabled = true;
+            }
+        });
+
+        btnSendFile.addEventListener('click', () => {
+            const file = fileInput.files[0];
+            if (!file || !dataChannel || dataChannel.readyState !== 'open') return;
+
+            const CHUNK_SIZE = 16384; // 16 КБ за один чанк (безопасный размер для WebRTC)
+            const reader = new FileReader();
+            let offset = 0;
+
+            progressContainer.classList.remove('hidden');
+            fileStatus.innerText = `Отправка: ${file.name}`;
+            btnSendFile.disabled = true;
+
+            // 1. Отправляем служебное текстовое сообщение о старте файла
+            dataChannel.send(JSON.stringify({
+                type: 'file-start',
+                name: file.name,
+                size: file.size
+            }));
+
+            // Чтение файла по частям
+            reader.onload = (event) => {
+                // 2. Отправляем бинарный массив данных
+                dataChannel.send(event.target.result);
+                offset += event.target.result.byteLength;
+
+                const percent = Math.floor((offset / file.size) * 100);
+                filePercent.innerText = `${percent}%`;
+                progressBar.style.width = `${percent}%`;
+
+                if (offset < file.size) {
+                    readNextChunk();
+                } else {
+                    // Файл полностью отправлен
+                    const fileUrl = URL.createObjectURL(file);
+                    appendFileMessage(file.name, fileUrl, file.size, true);
+                    
+                    // Сброс контроллеров
+                    fileInput.value = '';
+                    fileLabel.innerText = "📎 Выбрать файл";
+                    progressContainer.classList.add('hidden');
+                }
+            };
+
+            function readNextChunk() {
+                const slice = file.slice(offset, offset + CHUNK_SIZE);
+                reader.readAsArrayBuffer(slice);
+            }
+
+            // Запускаем чтение первого кусочка
+            readNextChunk();
+        });
+    </script>
+</body>
+</html>
+
+
