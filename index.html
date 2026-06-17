@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>P2P Cyber-Messenger Multi-User v3.1</title>
+    <!-- Tailwind CSS для дизайна -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- MQTT библиотека для надежного фонового обмена сигналами (Signaling) -->
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <style>
+        body {
+            background-color: #06080c;
+            color: #39ff14;
+            font-family: monospace;
+        }
+        .cyber-border {
+            border: 2px solid #39ff14;
+            box-shadow: 0 0 15px rgba(57, 255, 20, 0.15);
+        }
+        .cyber-btn {
+            background-color: #0c111a;
+            border: 1px solid #39ff14;
+            transition: all 0.2s ease-in-out;
+        }
+        .cyber-btn:hover:not(:disabled) {
+            background-color: #39ff14;
+            color: #06080c;
+            box-shadow: 0 0 15px rgba(57, 255, 20, 0.6);
+        }
+        .cyber-btn:disabled {
+            border-color: #1a301a;
+            color: #1a301a;
+            cursor: not-allowed;
+        }
+        .message-bubble {
+            background-color: #0c1017;
+            border: 1px solid #1c321c;
+        }
+        .message-bubble.my-msg {
+            background-color: #102110;
+            border-color: #39ff14;
+        }
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #06080c;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #39ff14;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen p-4 max-w-lg mx-auto">
+
+    <!-- Заголовок -->
+    <header class="text-center my-3">
+        <h1 class="text-2xl font-bold tracking-widest text-[#39ff14] uppercase">📡 BURMALDA-OS MESH v3.1</h1>
+        <p class="text-[10px] text-gray-500 mt-1 font-bold">БЕСПЛАТНЫЙ ГРУППОВОЙ ЧАТ И ОБМЕН ФАЙЛАМИ</p>
+        <div id="connection-status" class="inline-block px-3 py-1 mt-2 text-[10px] rounded-full bg-yellow-950 text-yellow-400 border border-yellow-600 animate-pulse">
+            Подключение к сигнальному шлюзу...
+        </div>
+    </header>
+
+    <!-- Секция настройки подключения -->
+    <section id="setup-section" class="cyber-border p-4 rounded-lg space-y-4 bg-[#0a0e15]">
+        <h2 class="text-center text-xs text-yellow-500 font-bold uppercase">Вход в защищенный туннель</h2>
+        
+        <div class="space-y-3">
+            <div>
+                <label class="block text-[10px] text-gray-400 mb-1">ВАШ НИКНЕЙМ:</label>
+                <input type="text" id="username-input" placeholder="Например: Сталкер" class="w-full bg-black border border-gray-800 rounded px-3 py-2 text-xs focus:outline-none focus:border-[#39ff14] text-white">
+            </div>
+
+            <div>
+                <label class="block text-[10px] text-gray-400 mb-1">НАЗВАНИЕ КОМНАТЫ:</label>
+                <input type="text" id="room-input" placeholder="Например: secret-room-123" class="w-full bg-black border border-gray-800 rounded px-3 py-2 text-xs focus:outline-none focus:border-[#39ff14] text-white">
+            </div>
+
+            <button id="btn-enter" disabled class="cyber-btn w-full py-2.5 text-xs font-bold rounded uppercase">
+                Подключить канал
+            </button>
+        </div>
+    </section>
+
+    <!-- Секция чата и обмена файлами -->
+    <section id="chat-section" class="hidden flex-1 flex flex-col cyber-border rounded-lg bg-[#0a0e15] overflow-hidden mt-3">
+        <!-- Список участников -->
+        <div class="bg-[#0b1017] p-2 border-b border-gray-900 flex flex-wrap items-center gap-2">
+            <span class="text-[10px] text-gray-500 uppercase font-bold">В сети:</span>
+            <div id="peers-list" class="flex flex-wrap gap-1"></div>
+        </div>
+
+        <!-- Окно сообщений -->
+        <div id="chat-box" class="flex-1 p-3 overflow-y-auto space-y-3 text-sm h-[320px]">
+            <div class="text-center text-[9px] text-gray-600 border-b border-gray-900 pb-2 uppercase">
+                🔒 ПРЯМОЙ ШИФРОВАННЫЙ MULTIPLEX КАНАЛ WEBRTC MESH
+            </div>
+        </div>
+
+        <!-- Прогресс файлы -->
+        <div id="progress-container" class="hidden px-4 py-2 bg-black border-t border-gray-900">
+            <div class="flex justify-between text-[10px] mb-1">
+                <span id="file-status">Передача...</span>
+                <span id="file-percent">0%</span>
+            </div>
+            <div class="w-full bg-gray-900 rounded-full h-2">
+                <div id="progress-bar" class="bg-[#39ff14] h-2 rounded-full transition-all duration-100" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <!-- Отправка файлов -->
+        <div class="px-4 py-2 bg-[#0d121d] border-t border-gray-900 flex items-center justify-between gap-2">
+            <input type="file" id="file-input" class="hidden">
+            <button id="btn-browse" class="cyber-btn text-[10px] py-2 px-3 rounded text-center flex-1 max-w-[150px] truncate font-bold">
+                📎 Выбрать файл
+            </button>
+            <button id="btn-send-file" disabled class="cyber-btn text-[10px] py-2 px-3 rounded flex-1 font-bold">
+                🚀 Отправить всем
+            </button>
+        </div>
+
+        <!-- Ввод сообщения -->
+        <div class="p-3 bg-black border-t border-gray-900 flex gap-2">
+            <input type="text" id="msg-input" placeholder="Напиши что-нибудь в чат..." class="flex-1 bg-[#0b1017] border border-gray-800 rounded px-3 py-2 text-xs focus:outline-none focus:border-[#39ff14] text-white">
+            <button id="btn-send-msg" class="cyber-btn px-4 py-2 rounded text-xs font-bold">SEND</button>
+        </div>
+    </section>
+
+    <!-- Кнопка "Выйти из сети" -->
+    <div class="text-center mt-2">
+        <button id="btn-leave" class="hidden text-[10px] text-red-500 border border-red-900 hover:bg-red-950 px-3 py-1.5 rounded uppercase font-bold">
+            Выйти из сети
+        </button>
+    </div>
+
+    <!-- Подвал -->
+    <footer class="text-center text-[9px] text-gray-600 my-4 uppercase tracking-wider">
+        Безопасная Зона. Версия 3.1 (MESH + MQTT Signaling)
+    </footer>
+
+    <!-- Логика приложения -->
+    <script>
+        // Использование защищенного открытого MQTT-брокера для обмена сигналами
+        const SIGNAL_BROKER = "wss://broker.emqx.io:8084/mqtt";
+        const rtcConfig = {
+            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        };
+
+        const myPeerId = "peer_" + Math.random().toString(36).substr(2, 9);
+        let myName = "";
+        let roomId = "";
+        let mqttClient = null;
+
+        // Хранилища Mesh сети
+        const peerConnections = {}; // peerId -> RTCPeerConnection
+        const dataChannels = {};     // peerId -> RTCDataChannel
+        const activePeers = {};      // peerId -> name
+        const activeBlobs = {};      // fileId -> { blob, name }
+        const fileBuffers = {};      // peerId -> { chunks: [], receivedSize: 0, meta: null }
+
+        // UI Элементы
+        const statusDiv = document.getElementById('connection-status');
+        const setupSection = document.getElementById('setup-section');
+        const chatSection = document.getElementById('chat-section');
+        const chatBox = document.getElementById('chat-box');
+        const msgInput = document.getElementById('msg-input');
+        const btnSendMsg = document.getElementById('btn-send-msg');
+        const btnEnter = document.getElementById('btn-enter');
+        const usernameInput = document.getElementById('username-input');
+        const roomInput = document.getElementById('room-input');
+        const peersListDiv = document.getElementById('peers-list');
+        const btnLeave = document.getElementById('btn-leave');
+
+        const fileInput = document.getElementById('file-input');
+        const btnBrowse = document.getElementById('btn-browse');
+        const btnSendFile = document.getElementById('btn-send-file');
+        const progressContainer = document.getElementById('progress-container');
+        const progressBar = document.getElementById('progress-bar');
+        const fileStatus = document.getElementById('file-status');
+        const filePercent = document.getElementById('file-percent');
+
+        // Глобальная функция безопасного скачивания файлов
+        window.triggerDownload = function(fileId) {
+            const fileData = activeBlobs[fileId];
+            if (!fileData) {
+                addSystemMsg("Файл не найден во временной памяти!");
+                return;
+            }
+            const url = URL.createObjectURL(fileData.blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileData.name;
+            document.body.appendChild(a);
+            try {
+                a.click();
+            } catch (err) {
+                window.open(url, '_blank');
+            }
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 500);
+        };
+
+        // --- Подключение к сигнальному брокеру ---
+        try {
+            mqttClient = mqtt.connect(SIGNAL_BROKER);
+            
+            mqttClient.on('connect', () => {
+                statusDiv.innerText = "Шлюз готов. Введите данные";
+                statusDiv.className = "inline-block px-3 py-1 mt-2 text-[10px] rounded-full bg-blue-950 text-blue-400 border border-blue-500";
+                btnEnter.disabled = false;
+            });
+
+            mqttClient.on('error', (err) => {
+                statusDiv.innerText = "Ошибка шлюза сигналов";
+                statusDiv.className = "inline-block px-3 py-1 mt-2 text-[10px] rounded-full bg-red-950 text-red-400 border border-red-500";
+            });
+        } catch (e) {
+            statusDiv.innerText = "Сбой инициализации шлюза";
+        }
+
+        // --- Вход в комнату ---
+        btnEnter.addEventListener('click', () => {
+            myName = usernameInput.value.trim();
+            roomId = roomInput.value.trim().toLowerCase();
+
+            if (!myName || !roomId) {
+                alert("Заполните никнейм и название комнаты!");
+                return;
+            }
+
+            setupSection.classList.add('hidden');
+            chatSection.classList.remove('hidden');
+            btnLeave.classList.remove('hidden');
+
+            statusDiv.innerText = `В комнате: ${roomId}. Ожидание участников...`;
+            statusDiv.className = "inline-block px-3 py-1 mt-2 text-[10px] rounded-full bg-green-950 text-green-400 border border-green-500 animate-pulse";
+
+            // Подписываемся на тему сигналов нашей комнаты
+            const topic = `p2p-cyber-chat/room/${roomId}`;
+            mqttClient.subscribe(topic);
+
+            // Обработка входящих сигналов от брокера
+            mqttClient.on('message', async (subTopic, payload) => {
+                if (subTopic !== topic) return;
+
+                const msg = JSON.parse(payload.toString());
+                if (msg.from === myPeerId) return; // Игнорируем свои же сигналы
+
+                if (msg.type === 'join' && msg.to === 'all') {
+                    // Кто-то вошел в комнату. Запоминаем его никнейм
+                    activePeers[msg.from] = msg.name;
+                    updatePeersUI();
+
+                    // Отвечаем ему личным приветствием, чтобы он знал наш никнейм
+                    mqttClient.publish(topic, JSON.stringify({
+                        type: 'join-ack',
+                        from: myPeerId,
+                        to: msg.from,
+                        name: myName
+                    }));
+
+                    // Инициализируем WebRTC соединение (Инициатором выступает тот, у кого ID лексикографически меньше)
+                    if (myPeerId < msg.from) {
+                        await createPeerConnection(msg.from, true);
+                    }
+                }
+                else if (msg.type === 'join-ack' && msg.to === myPeerId) {
+                    activePeers[msg.from] = msg.name;
+                    updatePeersUI();
+
+                    if (myPeerId < msg.from) {
+                        await createPeerConnection(msg.from, true);
+                    }
+                }
+                else if (msg.type === 'webrtc-signal' && msg.to === myPeerId) {
+                    await handleIncomingWebRTCSignal(msg.signal, msg.from);
+                }
+                else if (msg.type === 'leave') {
+                    closePeerConnection(msg.from);
+                }
+            });
+
+            // Отправляем сигнал о своем входе
+            mqttClient.publish(topic, JSON.stringify({
+                type: 'join',
+                from: myPeerId,
+                to: 'all',
+                name: myName
+            }));
+
+            updatePeersUI();
+        });
+
+        // --- Настройка MESH подключений (WebRTC) ---
+        async function createPeerConnection(otherId, isCaller) {
+            if (peerConnections[otherId]) return;
+
+            const pc = new RTCPeerConnection(rtcConfig);
+            peerConnections[otherId] = pc;
+
+            pc.onicecandidate = (event) => {
+                if (event.candidate && mqttClient) {
+                    const topic = `p2p-cyber-chat/room/${roomId}`;
+                    mqttClient.publish(topic, JSON.stringify({
+                        type: 'webrtc-signal',
+                        from: myPeerId,
+                        to: otherId,
+                        signal: { type: 'candidate', candidate: event.candidate }
+                    }));
+                }
+            };
+
+            if (isCaller) {
+                // Создаем датаканал, если мы инициатор
+                const channel = pc.createDataChannel(`data-channel-${otherId}`, { ordered: true });
+                setupDataChannel(otherId, channel);
+
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+
+                const topic = `p2p-cyber-chat/room/${roomId}`;
+                mqttClient.publish(topic, JSON.stringify({
+                    type: 'webrtc-signal',
+                    from: myPeerId,
+                    to: otherId,
+                    signal: offer
+                }));
+            } else {
+                // Принимаем датаканал, если инициатор — другой пир
+                pc.ondatachannel = (event) => {
+                    setupDataChannel(otherId, event.channel);
+                };
+            }
+        }
+
+        async function handleIncomingWebRTCSignal(signal, fromId) {
+            let pc = peerConnections[fromId];
+            if (!pc) {
+                await createPeerConnection(fromId, false);
+                pc = peerConnections[fromId];
+            }
+
+            if (signal.type === 'offer') {
+                await pc.setRemoteDescription(new RTCSessionDescription(signal));
+                const answer = await pc.createAnswer();
+                await pc.setLocalDescription(answer);
+
+                const topic = `p2p-cyber-chat/room/${roomId}`;
+                mqttClient.publish(topic, JSON.stringify({
+                    type: 'webrtc-signal',
+                    from: myPeerId,
+                    to: fromId,
+                    signal: answer
+                }));
+            } 
+            else if (signal.type === 'answer') {
+                await pc.setRemoteDescription(new RTCSessionDescription(signal));
+            } 
+            else if (signal.type === 'candidate') {
+                try {
+                    await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+                } catch (e) {}
+            }
+        }
+
+        function setupDataChannel(otherId, channel) {
+            channel.binaryType = "arraybuffer";
+            dataChannels[otherId] = channel;
+
+            channel.onopen = () => {
+                updateStatusLabel();
+                addSystemMsg(`Туннель связи с пользователем "${activePeers[otherId] || 'Друг'}" защищен.`);
+            };
+
+            channel.onclose = () => {
+                closePeerConnection(otherId);
+            };
+
+            channel.onmessage = (event) => {
+                const senderName = activePeers[otherId] || "Аноним";
+
+                if (event.data instanceof ArrayBuffer) {
+                    // Сборка прилетающих бинарных чанков файла
+                    if (!fileBuffers[otherId]) return;
+
+                    const buf = fileBuffers[otherId];
+                    buf.chunks.push(event.data);
+                    buf.receivedSize += event.data.byteLength;
+
+                    const percent = Math.floor((buf.receivedSize / buf.meta.size) * 100);
+                    progressContainer.classList.remove('hidden');
+                    fileStatus.innerText = `Получение: ${buf.meta.name} от ${senderName}`;
+                    filePercent.innerText = `${percent}%`;
+                    progressBar.style.width = `${percent}%`;
+
+                    if (buf.receivedSize >= buf.meta.size) {
+                        const blob = new Blob(buf.chunks);
+                        const fileId = "file_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
+                        activeBlobs[fileId] = { blob: blob, name: buf.meta.name };
+
+                        appendFileMessage(buf.meta.name, fileId, buf.meta.size, senderName, false);
+
+                        delete fileBuffers[otherId];
+                        progressContainer.classList.add('hidden');
+                    }
+                } else {
+                    try {
+                        const msg = JSON.parse(event.data);
+                        if (msg.type === 'file-start') {
+                            fileBuffers[otherId] = {
+                                chunks: [],
+                                receivedSize: 0,
+                                meta: { name: msg.name, size: msg.size }
+                            };
+                            return;
+                        }
+                    } catch (e) {}
+
+                    appendTextMessage(event.data, senderName, false);
+                }
+            };
+        }
+
+        function closePeerConnection(id) {
+            if (peerConnections[id]) {
+                peerConnections[id].close();
+                delete peerConnections[id];
+            }
+            if (dataChannels[id]) {
+                delete dataChannels[id];
+            }
+            if (activePeers[id]) {
+                addSystemMsg(`Участник "${activePeers[id]}" покинул сеть.`);
+                delete activePeers[id];
+            }
+            updatePeersUI();
+            updateStatusLabel();
+        }
+
+        // --- UI Рендеринг ---
+        function updatePeersUI() {
+            peersListDiv.innerHTML = "";
+            
+            // Своя плашка
+            const myBadge = document.createElement('span');
+            myBadge.className = "bg-green-950 border border-green-500 text-green-400 text-[10px] px-2 py-0.5 rounded font-bold";
+            myBadge.innerText = `${myName} (Вы)`;
+            peersListDiv.appendChild(myBadge);
+
+            // Другие участники
+            Object.keys(activePeers).forEach(id => {
+                const badge = document.createElement('span');
+                badge.className = "bg-blue-950 border border-blue-500 text-blue-400 text-[10px] px-2 py-0.5 rounded font-bold";
+                badge.innerText = activePeers[id];
+                peersListDiv.appendChild(badge);
+            });
+        }
+
+        function updateStatusLabel() {
+            const count = Object.keys(dataChannels).length;
+            if (count > 0) {
+                statusDiv.innerText = `Подключено напрямую к ${count} уст.`;
+                statusDiv.className = "inline-block px-3 py-1 mt-2 text-[10px] rounded-full bg-green-950 text-green-400 border border-green-500 animate-pulse";
+            } else {
+                statusDiv.innerText = `В комнате: ${roomId}. Ожидание друзей...`;
+                statusDiv.className = "inline-block px-3 py-1 mt-2 text-[10px] rounded-full bg-yellow-950 text-yellow-400 border border-yellow-500";
+            }
+        }
+
+        function addSystemMsg(text) {
+            const msg = document.createElement('div');
+            msg.className = 'text-center text-[10px] text-yellow-500 my-1 font-bold';
+            msg.innerText = `[СИСТЕМА]: ${text}`;
+            chatBox.appendChild(msg);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        function appendTextMessage(text, author, isMyMessage) {
+            const wrap = document.createElement('div');
+            wrap.className = `flex flex-col ${isMyMessage ? 'items-end' : 'items-start'}`;
+
+            const label = document.createElement('span');
+            label.className = "text-[9px] text-gray-500 px-1 mb-0.5";
+            label.innerText = author;
+
+            const bubble = document.createElement('div');
+            bubble.className = `max-w-[85%] rounded-lg p-3 text-xs ${isMyMessage ? 'message-bubble my-msg text-[#39ff14]' : 'message-bubble text-white'}`;
+            bubble.innerText = text;
+
+            wrap.appendChild(label);
+            wrap.appendChild(bubble);
+            chatBox.appendChild(wrap);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        function appendFileMessage(name, fileId, size, author, isMyFile) {
+            const wrap = document.createElement('div');
+            wrap.className = `flex flex-col ${isMyFile ? 'items-end' : 'items-start'}`;
+
+            const label = document.createElement('span');
+            label.className = "text-[9px] text-gray-500 px-1 mb-0.5";
+            label.innerText = author;
+
+            const bubble = document.createElement('div');
+            bubble.className = `max-w-[85%] rounded-lg p-3 text-xs space-y-2 ${isMyFile ? 'message-bubble my-msg text-[#39ff14]' : 'message-bubble text-white'}`;
+            
+            const mbSize = (size / (1024 * 1024)).toFixed(2);
+
+            if (isMyFile) {
+                bubble.innerHTML = `
+                    <div class="font-bold">📂 Отправлен файл:</div>
+                    <div class="text-[10px] text-gray-400 truncate max-w-[180px]">${name}</div>
+                    <div class="text-[9px] text-gray-500">Размер: ${mbSize} МБ</div>
+                `;
+            } else {
+                bubble.innerHTML = `
+                    <div class="font-bold">📂 Получен файл:</div>
+                    <div class="text-[10px] text-gray-400 truncate max-w-[180px]">${name}</div>
+                    <div class="text-[9px] text-gray-500">Размер: ${mbSize} МБ</div>
+                    <button onclick="triggerDownload('${fileId}')" class="block w-full text-center bg-green-900 border border-green-400 hover:bg-green-700 text-white font-bold py-1 px-3 rounded text-[10px] transition duration-200">
+                        📥 Скачать файл
+                    </button>
+                `;
+            }
+
+            wrap.appendChild(label);
+            wrap.appendChild(bubble);
+            chatBox.appendChild(wrap);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        // --- Отправка сообщений ---
+        function sendText() {
+            const text = msgInput.value.trim();
+            if (!text) return;
+
+            Object.keys(dataChannels).forEach(peerId => {
+                if (dataChannels[peerId].readyState === 'open') {
+                    dataChannels[peerId].send(text);
+                }
+            });
+
+            appendTextMessage(text, `${myName} (Вы)`, true);
+            msgInput.value = '';
+        }
+
+        btnSendMsg.addEventListener('click', sendText);
+        msgInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') sendText();
+        });
+
+        // --- Логика файлов с контролем буфера ---
+        btnBrowse.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length > 0) {
+                btnBrowse.innerText = `📎 ${fileInput.files[0].name}`;
+                btnSendFile.disabled = false;
+            } else {
+                btnBrowse.innerText = "📎 Выбрать файл";
+                btnSendFile.disabled = true;
+            }
+        });
+
+        btnSendFile.addEventListener('click', () => {
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            const activeChannels = Object.values(dataChannels).filter(ch => ch.readyState === 'open');
+            if (activeChannels.length === 0) {
+                addSystemMsg("Нет подключенных участников для отправки файла!");
+                return;
+            }
+
+            const CHUNK_SIZE = 16384; 
+            const reader = new FileReader();
+            let offset = 0;
+
+            progressContainer.classList.remove('hidden');
+            fileStatus.innerText = `Отправка: ${file.name}...`;
+            btnSendFile.disabled = true;
+
+            // Уведомляем участников о начале стрима файла
+            activeChannels.forEach(ch => {
+                ch.send(JSON.stringify({
+                    type: 'file-start',
+                    name: file.name,
+                    size: file.size
+                }));
+                ch.bufferedAmountLowThreshold = 65536;
+            });
+
+            reader.onload = (event) => {
+                const data = event.target.result;
+                activeChannels.forEach(ch => ch.send(data));
+                
+                offset += data.byteLength;
+                const percent = Math.floor((offset / file.size) * 100);
+                filePercent.innerText = `${percent}%`;
+                progressBar.style.width = `${percent}%`;
+
+                if (offset < file.size) {
+                    const maxBuffered = Math.max(...activeChannels.map(ch => ch.bufferedAmount));
+                    if (maxBuffered > 1048576) {
+                        let clearedCount = 0;
+                        activeChannels.forEach(ch => {
+                            ch.onbufferedamountlow = () => {
+                                ch.onbufferedamountlow = null;
+                                clearedCount++;
+                                if (clearedCount === activeChannels.length) {
+                                    readNextChunk();
+                                }
+                            };
+                        });
+                    } else {
+                        readNextChunk();
+                    }
+                } else {
+                    appendFileMessage(file.name, null, file.size, `${myName} (Вы)`, true);
+                    fileInput.value = '';
+                    btnBrowse.innerText = "📎 Выбрать файл";
+                    progressContainer.classList.add('hidden');
+                }
+            };
+
+            function readNextChunk() {
+                const slice = file.slice(offset, offset + CHUNK_SIZE);
+                reader.readAsArrayBuffer(slice);
+            }
+
+            readNextChunk();
+        });
+
+        // --- Выход из сети ---
+        btnLeave.addEventListener('click', () => {
+            if (mqttClient && roomId) {
+                const topic = `p2p-cyber-chat/room/${roomId}`;
+                mqttClient.publish(topic, JSON.stringify({
+                    type: 'leave',
+                    from: myPeerId
+                }));
+            }
+            window.location.reload();
+        });
+
+        window.addEventListener('beforeunload', () => {
+            if (mqttClient && roomId) {
+                const topic = `p2p-cyber-chat/room/${roomId}`;
+                mqttClient.publish(topic, JSON.stringify({
+                    type: 'leave',
+                    from: myPeerId
+                }));
+            }
+        });
+    </script>
+</body>
+</html>
+
+
